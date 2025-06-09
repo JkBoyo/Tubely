@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -9,6 +11,23 @@ import (
 )
 
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
+	const maxMem = 10 << 20
+	err := r.ParseMultipartForm(maxMem)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't parse form", err)
+		return
+	}
+	mPF, mPFH, err := r.FormFile("thumbnail")
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "File and header weren't found", err)
+		return
+	}
+	medTyp := mPFH.Header.Get("Content-Type")
+	dat, err := io.ReadAll(mPF)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't read file data", err)
+	}
+
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
 	if err != nil {
@@ -27,11 +46,29 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusUnauthorized, "Couldn't validate JWT", err)
 		return
 	}
-
+	vidDat, err := cfg.db.GetVideo(videoID)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't fetch video data", err)
+		return
+	}
+	if vidDat.UserID != userID {
+		respondWithError(w, http.StatusUnauthorized, "Not your video", errors.New("User doesn't own video"))
+		return
+	}
 
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
-	// TODO: implement the upload here
+	vidThumb := thumbnail{
+		data:      dat,
+		mediaType: medTyp,
+	}
+	videoThumbnails[videoID] = vidThumb
 
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	thumbUrl := fmt.Sprintf("http://localhost:%v/api/thumbnails/%v", cfg.port, videoID)
+
+	vidDat.ThumbnailURL = &thumbUrl
+
+	cfg.db.UpdateVideo(vidDat)
+
+	respondWithJSON(w, http.StatusOK, vidDat)
 }

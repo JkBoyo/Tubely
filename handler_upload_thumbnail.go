@@ -1,11 +1,13 @@
 package main
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -24,10 +26,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	medTyp := mPFH.Header.Get("Content-Type")
-	dat, err := io.ReadAll(mPF)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't read file data", err)
-	}
 
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
@@ -58,10 +56,21 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
+	fileExt := strings.Split(medTyp, "/")[1]
 
-	datStr := base64.StdEncoding.EncodeToString(dat)
+	thumbFP := filepath.Join("./assets", fmt.Sprintf("%v.%v", videoID.String(), fileExt))
 
-	thumbUrl := fmt.Sprintf("data:%v;base64,%v", medTyp, datStr)
+	file, err := os.Create(thumbFP)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "File creation error", err)
+		return
+	}
+
+	defer file.Close()
+
+	io.Copy(file, mPF)
+
+	thumbUrl := fmt.Sprintf("http://localhost:%v/%v", cfg.port, thumbFP)
 
 	vidDat.ThumbnailURL = &thumbUrl
 

@@ -1,13 +1,15 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -56,9 +58,30 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
-	fileExt := strings.Split(medTyp, "/")[1]
 
-	thumbFP := filepath.Join("./assets", fmt.Sprintf("%v.%v", videoID.String(), fileExt))
+	mimeT, _, err := mime.ParseMediaType(medTyp)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "File type is wrong", err)
+		return
+	}
+
+	var fileExt string
+	switch mimeT {
+	case "image/jpeg":
+		fileExt = "jpg"
+	case "image/png":
+		fileExt = "png"
+	default:
+		respondWithError(w, http.StatusBadRequest, "Wrong file type", err)
+		return
+	}
+
+	fileNameBytes := make([]byte, 32)
+	rand.Read(fileNameBytes)
+
+	fileName := base64.RawURLEncoding.EncodeToString(fileNameBytes)
+
+	thumbFP := filepath.Join("./assets", fmt.Sprintf("%v.%v", fileName, fileExt))
 
 	file, err := os.Create(thumbFP)
 	if err != nil {

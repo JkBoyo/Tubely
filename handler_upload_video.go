@@ -74,23 +74,39 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
 
 	io.Copy(tempFile, mPF)
 
-	tempFile.Seek(0, io.SeekStart)
+	processedVidPath, err := processVideoForFastStart(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Video processing error", err)
+		return
+	}
+
+	tempFile.Close()
+
+	prefix, err := getVideoAspectRatio(processedVidPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "problem determining Aspect ratio", err)
+	}
+
+	processedVid, err := os.Open(processedVidPath)
+	defer processedVid.Close()
+	defer os.Remove(processedVidPath)
+
+	processedVid.Seek(0, io.SeekStart)
 
 	fileNameBytes := make([]byte, 32)
 	rand.Read(fileNameBytes)
 
-	fileName := base64.RawURLEncoding.EncodeToString(fileNameBytes)
+	fileName := base64.RawURLEncoding.EncodeToString([]byte(fileNameBytes))
 
-	fileNameExt := fileName + ".mp4"
+	fileNameExt := prefix + "/" + fileName + ".mp4"
 
 	tempFileInput := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &fileNameExt,
-		Body:        tempFile,
+		Body:        processedVid,
 		ContentType: &medTyp,
 	}
 

@@ -110,7 +110,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		ContentType: &medTyp,
 	}
 
-	vidUrl := fmt.Sprintf("https://%v.s3.%v.amazonaws.com/%v", cfg.s3Bucket, cfg.s3Region, fileNameExt)
+	vidUrl := fmt.Sprintf("%v/%v", cfg.s3CfDistribution, fileNameExt)
 
 	vidDat.VideoURL = &vidUrl
 
